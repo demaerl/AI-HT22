@@ -1,5 +1,5 @@
 from ast import main
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List
 import csv
 
@@ -9,7 +9,7 @@ class Node:
     y: int
     state: int # matrix index
     cost: int
-    path: List[int]
+    path: List[int] = field(default_factory=list)
 
 def rec_dist(x_i: int, x_f: int, y_i: int, y_f: int) -> int:
     return abs(x_i - x_f) + abs(y_i - y_f)
@@ -31,19 +31,20 @@ def select_best_node(frontier, w: float, goal_node: Node) -> Node:
     return res_node     
 
 def search_node(nodes, target: Node) -> Node:
-    for node in nodes:
+    for i, node in enumerate(nodes):
         if(node.state == target.state):
-            return 1 
+            return i
     return -1
 
 def expand(matrix: List[List[int]], curr_node: Node):
     children = []
     curr_row = matrix[curr_node.state]
-    for i in range(3, len(curr_row)):
+    for i in range(3, len(curr_row)-4):
         if(curr_row[i] != 0):
             child_row = matrix[i]
             child_costs = curr_node.cost + curr_row[i]
-            child_path = curr_node.path.append(i)
+            child_path = curr_node.path.copy() # do not reference list!
+            child_path.append(i)
             child = Node(child_row[1], child_row[2], child_row[0], child_costs, child_path)
             children.append(child)
     return children
@@ -65,6 +66,7 @@ def astar_search(matrix: List[List[int]], w: float, start_node: Node, goal_node:
                 frontier.append(child)
             elif (child.cost < frontier[i].cost):
                 frontier[i] = child
+        print(frontier)
     return None, nodes_generated
 
 def main():
@@ -73,10 +75,11 @@ def main():
     #w = input("Weight parameter: \n")
 
     i: int = 0
-    f: int = 1
+    f: int = 3
     w: float = 0.5
 
-    file = open("100_nodes.csv")
+    #file = open("100_nodes.csv")
+    file = open("sample.csv")
     csvreader = csv.reader(file)
     header = []
     header = next(csvreader)
@@ -86,7 +89,7 @@ def main():
 
     start_row = rows[i]
     end_row = rows[f]
-    start_node = Node(start_row[1], start_row[2], start_row[0], 0, [])
+    start_node = Node(start_row[1], start_row[2], start_row[0], 0, [start_row[0]])
     goal_node = Node(end_row[1], end_row[2], end_row[0], 0, [])
     
     res, nodes_generated = astar_search(rows, w, start_node, goal_node)
