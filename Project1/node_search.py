@@ -35,7 +35,7 @@ def search_node(nodes, target: Node) -> Node:
             return i
     return -1
 
-def expand(matrix: List[List[int]], curr_node: Node):
+def expand_tree(matrix: List[List[int]], curr_node: Node):
     children = []
     curr_row = matrix[curr_node.state]
     for i in range(3, len(curr_row)):
@@ -49,33 +49,55 @@ def expand(matrix: List[List[int]], curr_node: Node):
             children.append(child)
     return children
 
-def astar_search(matrix: List[List[int]], w: float, start_node: Node, goal_node: Node):
+
+def astar_search_tree(matrix: List[List[int]], w: float, start_node: Node, goal_node: Node):
     frontier = []
     frontier.append(start_node)
-    nodes_generated: int = 1;
+    nodes_generated: int = 1; # initial node does also count
 
     while len(frontier) != 0:
         node = select_best_node(frontier, w, goal_node)
         if (node.state == goal_node.state):
             return node, nodes_generated
-        children = expand(matrix, node)
+        children = expand_tree(matrix, node)
         nodes_generated += len(children)
         for child in children:
             i = search_node(frontier, child)
             if (i == -1):
                 frontier.append(child)
             elif (child.cost < frontier[i].cost):
+                # updated node costs as cheaper path was found.
                 frontier[i] = child
     return None, nodes_generated
 
-def main():
-    #i = input("Starting node index: \n")
-    #f = input("Ending node index: \n")
-    #w = input("Weight parameter: \n")
+def astar_search_graph(matrix: List[List[int]], w: float, start_node: Node, goal_node: Node):
+    frontier = []
+    reached = []
+    frontier.append(start_node)
+    reached.append(start_node)
+    nodes_generated: int = 1; # initial node does also count
 
-    i: int = 0
-    f: int = 98
-    w: float = 0.5
+    while len(frontier) != 0:
+        node = select_best_node(frontier, w, goal_node)
+        if (node.state == goal_node.state):
+            return node, nodes_generated
+        children = expand_tree(matrix, node)
+        nodes_generated += len(children)
+        for child in children:
+            i = search_node(reached, child)
+            if (i == -1):
+                frontier.append(child)
+                reached.append(child)
+            elif (child.cost < reached[i].cost):
+                # updated node costs as cheaper path was found.
+                reached[i] = child
+                frontier.append(child)
+    return None, nodes_generated
+
+def main():
+    i = int(input("Starting node index: \n"))
+    f = int(input("Ending node index: \n"))
+    w = float(input("Weight parameter: \n"))
 
     file = open("100_nodes.csv")
     csvreader = csv.reader(file)
@@ -90,7 +112,7 @@ def main():
     start_node = Node(start_row[1], start_row[2], start_row[0], 0, [start_row[0]])
     goal_node = Node(end_row[1], end_row[2], end_row[0], 0, [])
     
-    res, nodes_generated = astar_search(rows, w, start_node, goal_node)
+    res, nodes_generated = astar_search_graph(rows, w, start_node, goal_node)
 
     if(res is None):
         print("Failure, no path found\n Nodes generated: ", nodes_generated)
