@@ -1,4 +1,3 @@
-from ast import main
 from dataclasses import dataclass, field
 from typing import List
 import csv
@@ -11,15 +10,15 @@ class Node:
     cost: int
     path: List[int] = field(default_factory=list)
 
-def rec_dist(x_i: int, x_f: int, y_i: int, y_f: int) -> int:
-    return abs(x_i - x_f) + abs(y_i - y_f)
+def rec_dist(curr: Node, goal: Node) -> int:
+    return abs(curr.x - goal.x) + abs(curr.y - goal.y)
 
 def select_best_node(frontier, w: float, goal_node: Node) -> Node:
     fbest: int = float('inf')
     ibest: int = -1
     for i in range(len(frontier)):
         node = frontier[i]
-        heuristic_cost = rec_dist(node.x, goal_node.x, node.y, goal_node.y)
+        heuristic_cost = rec_dist(node, goal_node)
         f = w * node.cost + (1 - w)* heuristic_cost
 
         if f < fbest:
@@ -39,12 +38,13 @@ def search_node(nodes, target: Node) -> Node:
 def expand(matrix: List[List[int]], curr_node: Node):
     children = []
     curr_row = matrix[curr_node.state]
-    for i in range(3, len(curr_row)-4):
+    for i in range(3, len(curr_row)):
         if(curr_row[i] != 0):
-            child_row = matrix[i]
+            # matrix is shifted by 3 due to node index and coordinates
+            child_row = matrix[i-3] 
             child_costs = curr_node.cost + curr_row[i]
             child_path = curr_node.path.copy() # do not reference list!
-            child_path.append(i)
+            child_path.append(i-3)
             child = Node(child_row[1], child_row[2], child_row[0], child_costs, child_path)
             children.append(child)
     return children
@@ -52,7 +52,7 @@ def expand(matrix: List[List[int]], curr_node: Node):
 def astar_search(matrix: List[List[int]], w: float, start_node: Node, goal_node: Node):
     frontier = []
     frontier.append(start_node)
-    nodes_generated: int = 0;
+    nodes_generated: int = 1;
 
     while len(frontier) != 0:
         node = select_best_node(frontier, w, goal_node)
@@ -66,7 +66,6 @@ def astar_search(matrix: List[List[int]], w: float, start_node: Node, goal_node:
                 frontier.append(child)
             elif (child.cost < frontier[i].cost):
                 frontier[i] = child
-        print(frontier)
     return None, nodes_generated
 
 def main():
@@ -75,17 +74,16 @@ def main():
     #w = input("Weight parameter: \n")
 
     i: int = 0
-    f: int = 3
+    f: int = 98
     w: float = 0.5
 
-    #file = open("100_nodes.csv")
-    file = open("sample.csv")
+    file = open("100_nodes.csv")
     csvreader = csv.reader(file)
     header = []
     header = next(csvreader)
     rows = []
     for row in csvreader:
-            rows.append(list(map(int, row)))
+        rows.append(list(map(int, row)))
 
     start_row = rows[i]
     end_row = rows[f]
