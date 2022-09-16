@@ -12,6 +12,7 @@ POPULATION_SIZE = 10
 CROSSOVER_RATE = 0.5
 MUTATION_RATE = 0.1
 OVER_WEIGHT_PENALTY = 1000
+SELECTION_PRESSURE = 1.5
 
 @dataclass
 class Chromosome:
@@ -78,7 +79,11 @@ def get_fitness(c: Chromosome):
 
 def get_rank(c: Chromosome, total_fitness: int):
 
-
+    # original ranks from original fitness
+    # total sum fitness
+    # scale individual fitness
+    # sum of scaled fitness
+    # select based on rank
     return
 
 
