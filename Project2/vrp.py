@@ -1,28 +1,28 @@
-# This is a sample Python script.
-
 import csv
 import math
 import random
 from dataclasses import dataclass, field
+import time
+import sys
 
 from typing import List
 
-NO_GENERATIONS = 10
-POPULATION_SIZE = 10
-CROSSOVER_RATE = 0.5
-MUTATION_RATE = 0.1
+NO_GENERATIONS = 100
+POPULATION_SIZE = 100
+CROSSOVER_RATE = 0.4
+MUTATION_RATE = 0.6
 OVER_WEIGHT_PENALTY = 1000
 SELECTION_PRESSURE = 1.5
+KEEP_BEST = True
+
+NO_VEHICLES = 9
+
 
 @dataclass
 class Chromosome:
     stops: List[int] = field(default_factory=list)
     vehicles: List[int] = field(default_factory=list)
     fitness: int = 0
-
-
-def calc_dist(x1, y1, x2, y2):
-    return math.sqrt(pow(x2 - x1, 2) + pow(y2 - y1, 2))
 
 
 def gen_chromosome():
@@ -44,6 +44,7 @@ def gen_population():
     return _chromosomes
 
 
+# applying the fitness function using a penalty if the weight of a vehicle is more than 100
 def fun_fitness(costs, weight):
     if weight > 100:
         weight_penalty = (weight - 100) * OVER_WEIGHT_PENALTY
@@ -52,17 +53,19 @@ def fun_fitness(costs, weight):
     fitness = costs + weight_penalty
     return fitness
 
-def get_fitness(c: Chromosome):
+
+# calculate the path_costs and vehicle_weights
+def calculate_path_costs_and_weights(c: Chromosome):
     path_costs = [0] * 9
-    vehicle_weight = [0] * 9
+    vehicle_weights = [0] * 9
     prev_stop = [0] * 9
 
     for i in range(0, len(c.vehicles)):
-        stop = c.stops[i] # the current stop
-        vehicle_no = c.vehicles[i] # the current driver that stops for this customer
-        dist = distance_matrix[prev_stop[vehicle_no]][stop] # distance driver makes for this customer
+        stop = c.stops[i]  # the current stop
+        vehicle_no = c.vehicles[i]  # the current driver that stops for this customer
+        dist = distance_matrix[prev_stop[vehicle_no]][stop]  # distance driver makes for this customer
         path_costs[vehicle_no] += dist
-        vehicle_weight[vehicle_no] += demands[stop]
+        vehicle_weights[vehicle_no] += demands[stop]
         prev_stop[vehicle_no] = stop
 
     # calculate costs for return to depot
@@ -70,42 +73,163 @@ def get_fitness(c: Chromosome):
         return_dist = distance_matrix[prev_stop[i]][0]
         path_costs[i] += return_dist
 
+    return path_costs, vehicle_weights
+
+
+# calculates the fitness of a chromosome, the higher the fitness the better is the chromosome
+def evaluate_fitness(c: Chromosome):
+    path_costs, vehicle_weights = calculate_path_costs_and_weights(c)
+
     total_fitness = 0
     for i in range(0, len(path_costs)):
-        f = fun_fitness(path_costs[i], vehicle_weight[i])
+        f = fun_fitness(path_costs[i], vehicle_weights[i])
         total_fitness += f
 
     c.fitness = 1 / total_fitness
 
-def get_rank(c: Chromosome, total_fitness: int):
 
-    # original ranks from original fitness
-    # total sum fitness
-    # scale individual fitness
-    # sum of scaled fitness
-    # select based on rank
-    return
+def scale_fitness(r, N):
+    return 2 - SELECTION_PRESSURE + 2 * (SELECTION_PRESSURE - 1) * ((r - 1) / (N - 1))
 
 
+# select the parent using the rank selection
 def select_parent(chromosomes):
-    ranks = []
     total_fitness = 0
+    chroms_fitness = []
     for chrom in chromosomes:
         total_fitness += chrom.fitness
+        chroms_fitness.append(chrom.fitness)
 
-    for chrom in chromosomes:
-        get_rank(chrom)
+    # gives the ranks of the chromosomes according to their fitness where a higher rank is better
+    # note that the rank goes from 0 to N-1, for the formula we need 1 up to N, hence add +1
+    ranks = [sorted(chroms_fitness).index(x) + 1 for x in chroms_fitness]
+    chroms_fitness_scaled = [scale_fitness(r, len(ranks)) for r in ranks]
+    total_fitness_scaled = sum(chroms_fitness_scaled)
+
+    # create the selection probabilities from the scaled fitness
+    selection_probabilities = [f_s / total_fitness_scaled for f_s in chroms_fitness_scaled]
+
+    selected_chrom = random.choices(chromosomes, weights=selection_probabilities)[0]
+
+    return selected_chrom
+
+
+# do the crossover, implemented according to the order crossover
+def do_crossover(parent1: Chromosome, parent2: Chromosome):
+    crossover_point_1 = random.randint(0, len(parent1.stops) - 1)
+    crossover_point_2 = random.randint(0, len(parent1.stops) - 1)
+
+    child_stops = [-1] * len(parent1.stops)
+    child_vehicles = [-1] * len(parent1.vehicles)
+    used_values = []
+
+    for i in range(min(crossover_point_1, crossover_point_2), max(crossover_point_1, crossover_point_2) + 1):
+        child_stops[i] = parent1.stops[i]
+        used_values.append(parent1.stops[i])
+        child_vehicles[i] = parent1.vehicles[i]
+
+    available_values = [ele for ele in parent2.stops if ele not in used_values]
+
+    for i in range(0, len(parent1.stops)):
+        if child_stops[i] == -1:
+            index_of_no_in_parent2 = parent2.stops.index(available_values[0])
+            child_vehicles[i] = parent2.vehicles[index_of_no_in_parent2]
+            child_stops[i] = available_values.pop(0)
+
+    return Chromosome(child_stops, child_vehicles)
+
+
+# does the mutation by swapping to random elements
+# TODO we could add other mutations and then select them randomly, see shift genes
+def do_mutation(c: Chromosome):
+    swap_genes(c)
+
+
+# swaps two genes
+def swap_genes(c: Chromosome):
+    swapping_index_1 = random.randint(0, len(c.stops) - 1)
+    swapping_index_2 = random.randint(0, len(c.stops) - 1)
+
+    temp_stop = c.stops[swapping_index_1]
+    temp_vehicle = c.vehicles[swapping_index_1]
+    c.stops[swapping_index_1] = c.stops[swapping_index_2]
+    c.vehicles[swapping_index_1] = c.vehicles[swapping_index_2]
+    c.stops[swapping_index_2] = temp_stop
+    c.vehicles[swapping_index_2] = temp_vehicle
+
+
+# shuffles the genes
+def shift_genes(c: Chromosome):
+    pass
+
+
+# shows the phenotype of a chromosome
+def print_phenotype(c: Chromosome):
+
+    path_costs, vehicle_weights = calculate_path_costs_and_weights(c)
+
+    for i in range(0, NO_VEHICLES):
+        print("Route #", i + 1, ":", sep="", end=" ")
+        for j in range(0, len(c.vehicles)):
+            if c.vehicles[j] == i:
+                print(c.stops[j] + 1, end=" ")
+        print("")
+
+    print("The total costs of the path are:", "{:.2f}".format(sum(path_costs)))
+
+
+# returns the best chromosome in a population
+def get_best_chromosome(population):
+    max_fitness = - sys.maxsize
+    best_chrom = Chromosome([], [])
+    for c in population:
+        if c.fitness > max_fitness:
+            max_fitness = c.fitness
+            best_chrom = c
+    return best_chrom
 
 
 def ga_solve():
     curr_population = gen_population()
     for chrom in curr_population:
-        get_fitness(chrom)
+        evaluate_fitness(chrom)
     for i in range(0, NO_GENERATIONS):
+        new_population = []
         for j in range(0, POPULATION_SIZE):
             parent1 = select_parent(curr_population)
 
+            if random.uniform(0, 1) < CROSSOVER_RATE:
+                # TODO do we need to check that parent1 and parent2 are not the same or does that not matter?
+                parent2 = select_parent(curr_population)
+                child = do_crossover(parent1, parent2)
+            else:
+                child = parent1
 
+            do_mutation(child)
+            evaluate_fitness(child)
+            new_population.append(child)
+
+        if KEEP_BEST:
+            best = get_best_chromosome(curr_population)
+            new_population[0] = best
+
+        curr_population = new_population
+
+    return get_best_chromosome(curr_population)
+
+
+# TODO plot routes with matplotlb
+# plots the optimal routes
+def plot_routes(c: Chromosome):
+    pass
+
+
+# calculates the distance based on euclidean metric measurement
+def calc_dist(x1, y1, x2, y2):
+    return math.sqrt(pow(x2 - x1, 2) + pow(y2 - y1, 2))
+
+
+# creates the distance matrix and the demands array
 def calculate_map_context():
     file = open("data.csv")
     csvreader = csv.reader(file)
@@ -133,7 +257,52 @@ def calculate_map_context():
     return _dist_matrix, _demands
 
 
+def check_costs_of_optimal_path():
+    print("distance of his best solution")
+    Route1 = [4, 7, 42, 31, 20, 46, 26]
+    Route2 = [36, 11, 15, 51, 2, 17, 14]
+    Route3 = [37, 3, 34, 33, 21]
+    Route4 = [1, 45, 6, 8]
+    Route5 = [25, 41, 29]
+    Route6 = [23, 52, 24, 44, 50, 48, 18]
+    Route7 = [32, 38, 16, 40, 53, 5, 10, 12]
+    Route8 = [30, 22, 19, 27, 13, 54, 28]
+    Route9 = [47, 39, 49, 9, 35, 43]
+
+    """
+    Route1 = [0, 4, 7, 42, 31, 20, 46, 26, 0]
+    Route2 = [0, 36, 11, 15, 51, 2, 17, 14, 0]
+    Route3 = [0, 37, 3, 34, 33, 21, 0]
+    Route4 = [0, 1, 45, 6, 8, 0]
+    Route5 = [0, 25, 41, 29, 0]
+    Route6 = [0, 23, 52, 24, 44, 50, 48, 18, 0]
+    Route7 = [0, 32, 38, 16, 40, 53, 5, 10, 12, 0]
+    Route8 = [0, 30, 22, 19, 27, 13, 54, 28, 0]
+    Route9 = [0, 47, 39, 49, 9, 35, 43, 0]
+    """
+
+    paths = [Route1, Route2, Route3, Route4, Route5, Route6, Route7, Route8, Route9]
+    costs = []
+    for p in paths:
+        p_cost = 0
+        for i in range(1, len(p)):
+            p_cost += distance_matrix[i][i-1]
+        costs.append(p_cost)
+    print(sum(costs))
+
+
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
     distance_matrix, demands = calculate_map_context()
-    ga_solve()
+
+    start_time = time.time()
+    # best_chromosome = ga_solve()
+    end_time = time.time()
+
+    # print_phenotype(best_chromosome)
+    print("Runtime of the algorithm:", end_time - start_time)
+
+    check_costs_of_optimal_path()
+
+
+
