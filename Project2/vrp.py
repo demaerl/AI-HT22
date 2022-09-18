@@ -9,9 +9,9 @@ from typing import List
 
 NO_GENERATIONS = 100
 POPULATION_SIZE = 100
-CROSSOVER_RATE = 0.4
-MUTATION_RATE = 0.6
-OVER_WEIGHT_PENALTY = 1000
+CROSSOVER_RATE = 0.5
+MUTATION_RATE = 0.3
+OVER_WEIGHT_PENALTY = 100000
 SELECTION_PRESSURE = 1.5
 KEEP_BEST = True
 
@@ -56,9 +56,9 @@ def fun_fitness(costs, weight):
 
 # calculate the path_costs and vehicle_weights
 def calculate_path_costs_and_weights(c: Chromosome):
-    path_costs = [0] * 9
-    vehicle_weights = [0] * 9
-    prev_stop = [0] * 9
+    path_costs = [0] * NO_VEHICLES
+    vehicle_weights = [0] * NO_VEHICLES
+    prev_stop = [0] * NO_VEHICLES
 
     for i in range(0, len(c.vehicles)):
         stop = c.stops[i]  # the current stop
@@ -139,6 +139,31 @@ def do_crossover(parent1: Chromosome, parent2: Chromosome):
     return Chromosome(child_stops, child_vehicles)
 
 
+# do the crossover, but keeps vehicles from one parent in order
+def do_crossover_keep_vehicles(parent1: Chromosome, parent2: Chromosome):
+    crossover_point_1 = random.randint(0, len(parent1.stops) - 1)
+    crossover_point_2 = random.randint(0, len(parent1.stops) - 1)
+
+    child_stops = [-1] * len(parent1.stops)
+    used_values = []
+
+    for i in range(min(crossover_point_1, crossover_point_2), max(crossover_point_1, crossover_point_2) + 1):
+        child_stops[i] = parent1.stops[i]
+        used_values.append(parent1.stops[i])
+
+    available_values = [ele for ele in parent2.stops if ele not in used_values]
+
+    for i in range(0, len(parent1.stops)):
+        if child_stops[i] == -1:
+            index_of_no_in_parent2 = parent2.stops.index(available_values[0])
+            child_stops[i] = available_values.pop(0)
+
+    keep_p1 = random.choice([True, False])
+    child_vehicles = parent1.vehicles if keep_p1 else parent2.vehicles
+
+    return Chromosome(child_stops, child_vehicles)
+
+
 # does the mutation by swapping to random elements
 # TODO we could add other mutations and then select them randomly, see shift genes
 def do_mutation(c: Chromosome):
@@ -165,7 +190,6 @@ def shift_genes(c: Chromosome):
 
 # shows the phenotype of a chromosome
 def print_phenotype(c: Chromosome):
-
     path_costs, vehicle_weights = calculate_path_costs_and_weights(c)
 
     for i in range(0, NO_VEHICLES):
@@ -201,7 +225,8 @@ def ga_solve():
             if random.uniform(0, 1) < CROSSOVER_RATE:
                 # TODO do we need to check that parent1 and parent2 are not the same or does that not matter?
                 parent2 = select_parent(curr_population)
-                child = do_crossover(parent1, parent2)
+                # child = do_crossover(parent1, parent2)
+                child = do_crossover_keep_vehicles(parent1, parent2)
             else:
                 child = parent1
 
@@ -259,6 +284,7 @@ def calculate_map_context():
 
 def check_costs_of_optimal_path():
     print("distance of his best solution")
+    """
     Route1 = [4, 7, 42, 31, 20, 46, 26]
     Route2 = [36, 11, 15, 51, 2, 17, 14]
     Route3 = [37, 3, 34, 33, 21]
@@ -268,8 +294,8 @@ def check_costs_of_optimal_path():
     Route7 = [32, 38, 16, 40, 53, 5, 10, 12]
     Route8 = [30, 22, 19, 27, 13, 54, 28]
     Route9 = [47, 39, 49, 9, 35, 43]
-
     """
+
     Route1 = [0, 4, 7, 42, 31, 20, 46, 26, 0]
     Route2 = [0, 36, 11, 15, 51, 2, 17, 14, 0]
     Route3 = [0, 37, 3, 34, 33, 21, 0]
@@ -279,14 +305,13 @@ def check_costs_of_optimal_path():
     Route7 = [0, 32, 38, 16, 40, 53, 5, 10, 12, 0]
     Route8 = [0, 30, 22, 19, 27, 13, 54, 28, 0]
     Route9 = [0, 47, 39, 49, 9, 35, 43, 0]
-    """
 
     paths = [Route1, Route2, Route3, Route4, Route5, Route6, Route7, Route8, Route9]
     costs = []
     for p in paths:
         p_cost = 0
         for i in range(1, len(p)):
-            p_cost += distance_matrix[i][i-1]
+            p_cost += distance_matrix[i][i - 1]
         costs.append(p_cost)
     print(sum(costs))
 
@@ -296,13 +321,10 @@ if __name__ == '__main__':
     distance_matrix, demands = calculate_map_context()
 
     start_time = time.time()
-    # best_chromosome = ga_solve()
+    best_chromosome = ga_solve()
     end_time = time.time()
 
-    # print_phenotype(best_chromosome)
+    print_phenotype(best_chromosome)
     print("Runtime of the algorithm:", end_time - start_time)
 
     check_costs_of_optimal_path()
-
-
-
