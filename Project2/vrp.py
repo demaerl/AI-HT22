@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 
 from typing import List
 
-NO_GENERATIONS = 3000
+NO_GENERATIONS = 10
 POPULATION_SIZE = 50
 CROSSOVER_RATE = 0.85
 MUTATION_RATE = 0.05
@@ -305,7 +305,7 @@ def ga_solve():
 
 # calculates the distance based on euclidean metric measurement
 def calc_dist(x1, y1, x2, y2):
-    return math.sqrt(pow(x2 - x1, 2) + pow(y2 - y1, 2))
+    return math.sqrt(pow((x2 - x1), 2) + pow((y2 - y1), 2))
 
 
 # creates the distance matrix and the demands array
@@ -397,7 +397,7 @@ def check_costs_of_optimal_path():
     for p in paths:
         p_cost = 0
         for i in range(1, len(p)):
-            p_cost += distance_matrix[i][i - 1]
+            p_cost += distance_matrix[p[i]][p[i - 1]]
         costs.append(p_cost)
     print(sum(costs))
 
@@ -414,4 +414,4 @@ if __name__ == '__main__':
     print("Runtime of the algorithm:", "{:.2f}".format(end_time - start_time))
     plot_map(best_chromosome, data_matrix)
 
-    # check_costs_of_optimal_path()
+    check_costs_of_optimal_path()
