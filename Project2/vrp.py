@@ -61,9 +61,9 @@ def fun_fitness(costs, weight):
 
 # calculate the path_costs and vehicle_weights
 def calculate_path_costs_and_weights(c: Chromosome):
-    path_costs = [0] * 9
-    vehicle_weights = [0] * 9
-    prev_stop = [0] * 9
+    path_costs = [0] * NO_VEHICLES
+    vehicle_weights = [0] * NO_VEHICLES
+    prev_stop = [0] * NO_VEHICLES
 
     for i in range(0, len(c.vehicles)):
         stop = c.stops[i]  # the current stop
@@ -193,9 +193,33 @@ def do_crossover(parent1: Chromosome, parent2: Chromosome):
         return child_2
 
 
+# do the crossover, but keeps vehicles from one parent in order
+def do_crossover_keep_vehicles(parent1: Chromosome, parent2: Chromosome):
+    crossover_point_1 = random.randint(0, len(parent1.stops) - 1)
+    crossover_point_2 = random.randint(0, len(parent1.stops) - 1)
+
+    child_stops = [-1] * len(parent1.stops)
+    used_values = []
+
+    for i in range(min(crossover_point_1, crossover_point_2), max(crossover_point_1, crossover_point_2) + 1):
+        child_stops[i] = parent1.stops[i]
+        used_values.append(parent1.stops[i])
+
+    available_values = [ele for ele in parent2.stops if ele not in used_values]
+
+    for i in range(0, len(parent1.stops)):
+        if child_stops[i] == -1:
+            index_of_no_in_parent2 = parent2.stops.index(available_values[0])
+            child_stops[i] = available_values.pop(0)
+
+    keep_p1 = random.choice([True, False])
+    child_vehicles = parent1.vehicles if keep_p1 else parent2.vehicles
+
+    return Chromosome(child_stops, child_vehicles)
+
+
 # does the mutation by swapping to random elements
 # TODO we could add other mutations and then select them randomly, see shift genes
-# TODO add mutation rate
 def do_mutation(c: Chromosome):
     if random.uniform(0, 1) < MUTATION_RATE:
         swap_gene(c)
@@ -370,7 +394,6 @@ def check_costs_of_optimal_path():
 
     paths = [Route1, Route2, Route3, Route4, Route5, Route6, Route7, Route8, Route9]
     costs = []
-
     for p in paths:
         p_cost = 0
         for i in range(1, len(p)):
