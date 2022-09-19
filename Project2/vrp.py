@@ -5,17 +5,22 @@ from dataclasses import dataclass, field
 import time
 import sys
 
+import matplotlib.pyplot as plt
+
 from typing import List
 
-NO_GENERATIONS = 100
-POPULATION_SIZE = 100
-CROSSOVER_RATE = 0.4
-MUTATION_RATE = 0.6
+NO_GENERATIONS = 3000
+POPULATION_SIZE = 50
+CROSSOVER_RATE = 0.85
+MUTATION_RATE = 0.05
 OVER_WEIGHT_PENALTY = 1000
 SELECTION_PRESSURE = 1.5
 KEEP_BEST = True
 
 NO_VEHICLES = 9
+
+
+# TODO crossover anpassen, check dass distance matrix korrekt ist, ansonsten infeasible solution rauswerfen
 
 
 @dataclass
@@ -93,7 +98,7 @@ def scale_fitness(r, N):
 
 
 # select the parent using the rank selection
-def select_parent(chromosomes):
+def select_parent_rank_selection(chromosomes):
     total_fitness = 0
     chroms_fitness = []
     for chrom in chromosomes:
@@ -106,6 +111,9 @@ def select_parent(chromosomes):
     chroms_fitness_scaled = [scale_fitness(r, len(ranks)) for r in ranks]
     total_fitness_scaled = sum(chroms_fitness_scaled)
 
+    if total_fitness_scaled == 0:
+        chroms_fitness_scaled[0] += 1
+
     # create the selection probabilities from the scaled fitness
     selection_probabilities = [f_s / total_fitness_scaled for f_s in chroms_fitness_scaled]
 
@@ -114,8 +122,25 @@ def select_parent(chromosomes):
     return selected_chrom
 
 
+# select the parent using the roulette wheel selection
+def select_parent_roulette_selection(chromosomes):
+    total_fitness = 0
+    chroms_fitness = []
+    for chrom in chromosomes:
+        total_fitness += chrom.fitness
+        chroms_fitness.append(chrom.fitness)
+
+    # create the selection probabilities from the scaled fitness
+    selection_probabilities = [f_s / total_fitness for f_s in chroms_fitness]
+
+    selected_chrom = random.choices(chromosomes, weights=selection_probabilities)[0]
+
+    return selected_chrom
+
+
+# TODO can most probably be deleted just kept in case we need it
 # do the crossover, implemented according to the order crossover
-def do_crossover(parent1: Chromosome, parent2: Chromosome):
+def do_crossover_old(parent1: Chromosome, parent2: Chromosome):
     crossover_point_1 = random.randint(0, len(parent1.stops) - 1)
     crossover_point_2 = random.randint(0, len(parent1.stops) - 1)
 
@@ -139,22 +164,57 @@ def do_crossover(parent1: Chromosome, parent2: Chromosome):
     return Chromosome(child_stops, child_vehicles)
 
 
+# do the crossover, implemented according to the order crossover
+def do_crossover(parent1: Chromosome, parent2: Chromosome):
+    crossover_point_1 = random.randint(0, len(parent1.stops) - 1)
+    crossover_point_2 = random.randint(0, len(parent1.stops) - 1)
+    child_stops = [-1] * len(parent1.stops)
+    used_values = []
+
+    for i in range(min(crossover_point_1, crossover_point_2), max(crossover_point_1, crossover_point_2) + 1):
+        child_stops[i] = parent1.stops[i]
+        used_values.append(parent1.stops[i])
+
+    available_values = [ele for ele in parent2.stops if ele not in used_values]
+
+    for i in range(0, len(parent1.stops)):
+        if child_stops[i] == -1:
+            child_stops[i] = available_values.pop(0)
+
+    child_1 = Chromosome(child_stops, parent1.vehicles.copy())
+    child_2 = Chromosome(child_stops, parent2.vehicles.copy())
+
+    evaluate_fitness(child_1)
+    evaluate_fitness(child_2)
+
+    if child_1.fitness > child_2.fitness:
+        return child_1
+    else:
+        return child_2
+
+
 # does the mutation by swapping to random elements
 # TODO we could add other mutations and then select them randomly, see shift genes
+# TODO add mutation rate
 def do_mutation(c: Chromosome):
-    swap_genes(c)
+    if random.uniform(0, 1) < MUTATION_RATE:
+        swap_gene(c)
 
 
 # swaps two genes
-def swap_genes(c: Chromosome):
+def swap_gene(c: Chromosome):
     swapping_index_1 = random.randint(0, len(c.stops) - 1)
     swapping_index_2 = random.randint(0, len(c.stops) - 1)
 
     temp_stop = c.stops[swapping_index_1]
-    temp_vehicle = c.vehicles[swapping_index_1]
     c.stops[swapping_index_1] = c.stops[swapping_index_2]
-    c.vehicles[swapping_index_1] = c.vehicles[swapping_index_2]
     c.stops[swapping_index_2] = temp_stop
+
+    swapping_index_1 = random.randint(0, len(c.stops) - 1)
+    swapping_index_2 = random.randint(0, len(c.stops) - 1)
+
+    temp_vehicle = c.vehicles[swapping_index_1]
+    c.vehicles[swapping_index_1] = c.vehicles[swapping_index_2]
     c.vehicles[swapping_index_2] = temp_vehicle
 
 
@@ -165,14 +225,14 @@ def shift_genes(c: Chromosome):
 
 # shows the phenotype of a chromosome
 def print_phenotype(c: Chromosome):
-
     path_costs, vehicle_weights = calculate_path_costs_and_weights(c)
+    print(vehicle_weights)
 
     for i in range(0, NO_VEHICLES):
         print("Route #", i + 1, ":", sep="", end=" ")
         for j in range(0, len(c.vehicles)):
             if c.vehicles[j] == i:
-                print(c.stops[j] + 1, end=" ")
+                print(c.stops[j], end=" ")
         print("")
 
     print("The total costs of the path are:", "{:.2f}".format(sum(path_costs)))
@@ -193,14 +253,15 @@ def ga_solve():
     curr_population = gen_population()
     for chrom in curr_population:
         evaluate_fitness(chrom)
+
     for i in range(0, NO_GENERATIONS):
         new_population = []
         for j in range(0, POPULATION_SIZE):
-            parent1 = select_parent(curr_population)
+            parent1 = select_parent_roulette_selection(curr_population)
 
             if random.uniform(0, 1) < CROSSOVER_RATE:
                 # TODO do we need to check that parent1 and parent2 are not the same or does that not matter?
-                parent2 = select_parent(curr_population)
+                parent2 = select_parent_roulette_selection(curr_population)
                 child = do_crossover(parent1, parent2)
             else:
                 child = parent1
@@ -216,12 +277,6 @@ def ga_solve():
         curr_population = new_population
 
     return get_best_chromosome(curr_population)
-
-
-# TODO plot routes with matplotlb
-# plots the optimal routes
-def plot_routes(c: Chromosome):
-    pass
 
 
 # calculates the distance based on euclidean metric measurement
@@ -254,11 +309,44 @@ def calculate_map_context():
             dist = calc_dist(start_x, start_y, end_x, end_y)
             _dist_matrix[i][j] = dist
             _dist_matrix[j][i] = dist
-    return _dist_matrix, _demands
+    return _dist_matrix, _demands, rows
+
+
+def plot_map(c: Chromosome, data):
+    x_data = [d[2] for d in data]
+    y_data = [d[3] for d in data]
+    colors = ["tab:blue", "tab:orange", "tab:green", "tab:red", "tab:purple", "tab:brown", "tab:pink", "tab:olive", "tab:grey"]
+
+    routes = []
+
+    for i in range(0, NO_VEHICLES):
+        route = [0]
+        for j in range(0, len(c.vehicles)):
+            if c.vehicles[j] == i:
+                route.append(c.stops[j])
+        route.append(0)
+        routes.append(route)
+
+    for i in range(0, len(routes)):
+        x_points = []
+        y_points = []
+        for j in routes[i]:
+            x_points.append(x_data[j])
+            y_points.append(y_data[j])
+        plt.plot(x_points[1:-1], y_points[1:-1], label="Route" + str(i + 1), marker='o', color=colors[i])
+        plt.plot(x_points[:2], y_points[:2], color=colors[i], linestyle="--")
+        plt.plot(x_points[-2:], y_points[-2:], color=colors[i], linestyle="--")
+
+    plt.plot(x_data[0], y_data[0], marker='o', color='black')
+
+    plt.legend()
+    plt.show()
 
 
 def check_costs_of_optimal_path():
     print("distance of his best solution")
+
+    """
     Route1 = [4, 7, 42, 31, 20, 46, 26]
     Route2 = [36, 11, 15, 51, 2, 17, 14]
     Route3 = [37, 3, 34, 33, 21]
@@ -268,8 +356,8 @@ def check_costs_of_optimal_path():
     Route7 = [32, 38, 16, 40, 53, 5, 10, 12]
     Route8 = [30, 22, 19, 27, 13, 54, 28]
     Route9 = [47, 39, 49, 9, 35, 43]
-
     """
+
     Route1 = [0, 4, 7, 42, 31, 20, 46, 26, 0]
     Route2 = [0, 36, 11, 15, 51, 2, 17, 14, 0]
     Route3 = [0, 37, 3, 34, 33, 21, 0]
@@ -279,30 +367,28 @@ def check_costs_of_optimal_path():
     Route7 = [0, 32, 38, 16, 40, 53, 5, 10, 12, 0]
     Route8 = [0, 30, 22, 19, 27, 13, 54, 28, 0]
     Route9 = [0, 47, 39, 49, 9, 35, 43, 0]
-    """
 
     paths = [Route1, Route2, Route3, Route4, Route5, Route6, Route7, Route8, Route9]
     costs = []
+
     for p in paths:
         p_cost = 0
         for i in range(1, len(p)):
-            p_cost += distance_matrix[i][i-1]
+            p_cost += distance_matrix[i][i - 1]
         costs.append(p_cost)
     print(sum(costs))
 
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
-    distance_matrix, demands = calculate_map_context()
+    distance_matrix, demands, data_matrix = calculate_map_context()
 
     start_time = time.time()
-    # best_chromosome = ga_solve()
+    best_chromosome = ga_solve()
     end_time = time.time()
 
-    # print_phenotype(best_chromosome)
-    print("Runtime of the algorithm:", end_time - start_time)
+    print_phenotype(best_chromosome)
+    print("Runtime of the algorithm:", "{:.2f}".format(end_time - start_time))
+    plot_map(best_chromosome, data_matrix)
 
-    check_costs_of_optimal_path()
-
-
-
+    # check_costs_of_optimal_path()
