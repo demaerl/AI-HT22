@@ -4,16 +4,17 @@ import random
 from dataclasses import dataclass, field
 import time
 import sys
+import collections
 
 import matplotlib.pyplot as plt
 
 from typing import List
 
-NO_GENERATIONS = 10
+NO_GENERATIONS = 2000
 POPULATION_SIZE = 50
-CROSSOVER_RATE = 0.85
-MUTATION_RATE = 0.05
-OVER_WEIGHT_PENALTY = 1000
+CROSSOVER_RATE = 0.95
+MUTATION_RATE = 0.45
+OVER_WEIGHT_PENALTY = 10000
 SELECTION_PRESSURE = 1.5
 KEEP_BEST = True
 
@@ -193,31 +194,6 @@ def do_crossover(parent1: Chromosome, parent2: Chromosome):
         return child_2
 
 
-# do the crossover, but keeps vehicles from one parent in order
-def do_crossover_keep_vehicles(parent1: Chromosome, parent2: Chromosome):
-    crossover_point_1 = random.randint(0, len(parent1.stops) - 1)
-    crossover_point_2 = random.randint(0, len(parent1.stops) - 1)
-
-    child_stops = [-1] * len(parent1.stops)
-    used_values = []
-
-    for i in range(min(crossover_point_1, crossover_point_2), max(crossover_point_1, crossover_point_2) + 1):
-        child_stops[i] = parent1.stops[i]
-        used_values.append(parent1.stops[i])
-
-    available_values = [ele for ele in parent2.stops if ele not in used_values]
-
-    for i in range(0, len(parent1.stops)):
-        if child_stops[i] == -1:
-            index_of_no_in_parent2 = parent2.stops.index(available_values[0])
-            child_stops[i] = available_values.pop(0)
-
-    keep_p1 = random.choice([True, False])
-    child_vehicles = parent1.vehicles if keep_p1 else parent2.vehicles
-
-    return Chromosome(child_stops, child_vehicles)
-
-
 # does the mutation by swapping to random elements
 # TODO we could add other mutations and then select them randomly, see shift genes
 def do_mutation(c: Chromosome):
@@ -243,8 +219,11 @@ def swap_gene(c: Chromosome):
 
 
 # shuffles the genes
-def shift_genes(c: Chromosome):
-    pass
+def shift_gene(c: Chromosome):
+    pos = random.randint(0, len(c.stops) - 1)
+    shifted_stops = collections.deque(c.stops)
+    shifted_stops.rotate(pos)
+    return shifted_stops
 
 
 # shows the phenotype of a chromosome
