@@ -10,17 +10,16 @@ import matplotlib.pyplot as plt
 from typing import List
 
 NO_GENERATIONS = 400
-POPULATION_SIZE = 40
+POPULATION_SIZE = 35
 CROSSOVER_RATE = 0.9
 MUTATION_RATE = 0.45
 NO_OF_MUTATIONS = 7
 OVER_WEIGHT_PENALTY = 1000
-SELECTION_PRESSURE = 1.5
 KEEP_BEST = True
 
 NO_VEHICLES = 9
 MAX_VEHICLE_WEIGHT = 100
-NO_EXPERIMENT_ITERATIONS = 5
+NO_EXPERIMENT_ITERATIONS = 20
 
 
 @dataclass
@@ -102,35 +101,6 @@ def evaluate_fitness(c: Chromosome):
     c.fitness = 1 / total_fitness
 
 
-def scale_fitness(r, N):
-    return 2 - SELECTION_PRESSURE + 2 * (SELECTION_PRESSURE - 1) * ((r - 1) / (N - 1))
-
-
-# select the parent using the rank selection
-def select_parent_rank_selection(chromosomes):
-    total_fitness = 0
-    chroms_fitness = []
-    for chrom in chromosomes:
-        total_fitness += chrom.fitness
-        chroms_fitness.append(chrom.fitness)
-
-    # gives the ranks of the chromosomes according to their fitness where a higher rank is better
-    # note that the rank goes from 0 to N-1, for the formula we need 1 up to N, hence add +1
-    ranks = [sorted(chroms_fitness).index(x) + 1 for x in chroms_fitness]
-    chroms_fitness_scaled = [scale_fitness(r, len(ranks)) for r in ranks]
-    total_fitness_scaled = sum(chroms_fitness_scaled)
-
-    if total_fitness_scaled == 0:
-        chroms_fitness_scaled[0] += 1
-
-    # create the selection probabilities from the scaled fitness
-    selection_probabilities = [f_s / total_fitness_scaled for f_s in chroms_fitness_scaled]
-
-    selected_chrom = random.choices(chromosomes, weights=selection_probabilities)[0]
-
-    return selected_chrom
-
-
 # select the parent using the roulette wheel selection
 def select_parent_roulette_selection(chromosomes):
     total_fitness = 0
@@ -189,7 +159,7 @@ def do_mutation(c: Chromosome):
             elif rand < 0.4:
                 swap_gene_vehicles(c)
             elif rand < 0.6:
-                exchange_gene_vehicles_feasible(c)
+                exchange_gene_vehicles(c)
             elif rand < 0.8:
                 two_opt_one_path(c)
             else:
@@ -205,22 +175,6 @@ def do_mutation(c: Chromosome):
             old_chrom.fitness = c.fitness
 
 
-
-def do_mutation_old(c: Chromosome):
-
-    for j in range(0, NO_OF_MUTATIONS):
-        if random.uniform(0, 1) < MUTATION_RATE:
-            rand = random.uniform(0, 1)
-            if rand < 0.25:
-                swap_gene_stops(c)
-            elif rand < 0.5:
-                swap_gene_vehicles(c)
-            elif rand < 0.75:
-                exchange_gene_vehicles_feasible(c)
-            else:
-                two_opt_one_path(c)
-
-
 # swaps two genes in the stops array
 def swap_gene_stops(c: Chromosome):
     swapping_index_1 = random.randint(0, len(c.stops) - 1)
@@ -232,7 +186,6 @@ def swap_gene_stops(c: Chromosome):
 
 
 # swaps two genes in the vehicles array
-# TODO add maybe a feasability check
 def swap_gene_vehicles(c: Chromosome):
     swapping_index_1 = random.randint(0, len(c.stops) - 1)
     swapping_index_2 = random.randint(0, len(c.stops) - 1)
@@ -242,35 +195,8 @@ def swap_gene_vehicles(c: Chromosome):
     c.vehicles[swapping_index_2] = temp_vehicle
 
 
-# shift the genes either for stops or for vehicles
-# provided terrible performance
-def shift_genes(c: Chromosome):
-    shifting_index = random.randint(0, len(c.stops) - 1)
-    change_stops = True if random.uniform(0, 1) < 0.5 else False
-
-    if change_stops:
-        removed_stop = c.stops.pop(0)
-        c.stops.insert(shifting_index, removed_stop)
-    else:
-        removed_element = c.vehicles.pop(0)
-        c.vehicles.insert(shifting_index, removed_element)
-
-
-# reverts the genes between two points
-# provided not so good performance
-def invert_genes(c: Chromosome):
-    inverting_index_1 = random.randint(0, len(c.stops) - 1)
-    inverting_index_2 = random.randint(0, len(c.stops) - 1) + 1
-    change_stops = True if random.uniform(0, 1) < 0.5 else False
-
-    if change_stops:
-        c.stops[inverting_index_1:inverting_index_2] = c.stops[inverting_index_1:inverting_index_2][::-1]
-    else:
-        c.vehicles[inverting_index_1:inverting_index_2] = c.vehicles[inverting_index_1:inverting_index_2][::-1]
-
-
 # exchanges the allele of one gene in the vehicles with a random other one if it is feasible
-def exchange_gene_vehicles_feasible(c: Chromosome):
+def exchange_gene_vehicles(c: Chromosome):
     changing_index = random.randint(0, len(c.stops) - 1)
     vehicle_weights = calculate_weights(c)
     demand_at_changing_index = demands[changing_index]
@@ -284,65 +210,59 @@ def exchange_gene_vehicles_feasible(c: Chromosome):
         c.vehicles[changing_index] = random.choice(available_vehicles)
 
 
-# exchanges the allele of one gene in the vehicles with a random other one if it is feasible
-def exchange_gene_vehicles_non_feasible(c: Chromosome):
-    changing_index = random.randint(0, len(c.stops) - 1)
-    c.vehicles[changing_index] = random.randint(0, 8)
+# calculates the costs if the route is changed with these four stops
+def cost_route_change(stop1, stop2, stop3, stop4):
+    return distance_matrix[stop1][stop3] + distance_matrix[stop2][stop4] - distance_matrix[stop1][stop2] - distance_matrix[stop3][stop4]
 
 
-def cost_change(n1, n2, n3, n4):
-    return distance_matrix[n1][n3] + distance_matrix[n2][n4] - distance_matrix[n1][n2] - distance_matrix[n3][n4]
-
-
+# implements part of the 2-opt route algorithm to avoid twists in a route
 def two_opt_route(route):
     path_size = len(route)
     for i in range(1, path_size - 2):
         for j in range(i + 1, path_size):
             if j - i == 1:
                 continue
-            if cost_change(route[i - 1], route[i], route[j - 1], route[j]) < 0:
+            if cost_route_change(route[i - 1], route[i], route[j - 1], route[j]) < 0:
                 route[i:j] = route[j - 1:i - 1:-1]
     return route
 
 
-# removes twists in the path of a vehicle
+# removes twists in the path of one vehicle in a chromosome
 def two_opt_one_path(c: Chromosome):
     vehicle_to_check = random.randint(0, 8)
     route = [0]
-
     for i in range(0, len(c.vehicles)):
         if c.vehicles[i] == vehicle_to_check:
             route.append(c.stops[i])
+
     route.append(0)
-
     route = two_opt_route(route)
-
     route.pop(0)
+
     for i in range(0, len(c.vehicles)):
         if c.vehicles[i] == vehicle_to_check:
             c.stops[i] = route.pop(0)
 
 
-# removes twists in the path of two vehicles
+# redistributes the stops between two paths and reorders them using 2-opt
 def two_opt_two_paths(c: Chromosome):
     vehicle_1 = random.randint(0, 8)
     vehicle_2 = random.randint(0, 8)
     if vehicle_1 == vehicle_2:
         return
 
-    vehicle_weights = calculate_weights(c)
     # return if overweight to keep only feasible solutions
+    vehicle_weights = calculate_weights(c)
     if vehicle_weights[vehicle_1] + vehicle_weights[vehicle_2] >= 2 * MAX_VEHICLE_WEIGHT:
         return
 
+    # get all the stops of the two vehicles
     stops = []
     for i in range(0, len(c.vehicles)):
-        if c.vehicles[i] == vehicle_1:
-            stops.append(c.stops[i])
-        if c.vehicles[i] == vehicle_2:
+        if c.vehicles[i] == vehicle_1 or c.vehicles[i] == vehicle_2:
             stops.append(c.stops[i])
 
-    # calculate the max dist of all nodes in the routes to select them as starting points
+    # calculate the max dist of all stops in the routes to select them as starting stops for the individual routes
     max_dist = 0
     max_point1 = -1
     max_point2 = -1
@@ -354,6 +274,7 @@ def two_opt_two_paths(c: Chromosome):
                 max_point1 = stops[i]
                 max_point2 = stops[j]
 
+    # initialize new routes and weights with zero
     route1 = [0]
     route2 = [0]
     weights = [0, 0]
@@ -361,15 +282,16 @@ def two_opt_two_paths(c: Chromosome):
     route2.append(max_point2)
     weights[0] += demands[max_point1]
     weights[1] += demands[max_point2]
+    # remove the max points from the stops array
     stops.remove(max_point1)
     stops.remove(max_point2)
 
-    # add the current point to the closes route if possible
+    # add the next stop to the closest route if possible
     for i in range(0, len(stops)):
         dist1 = distance_matrix[max_point1][stops[i]]
         dist2 = distance_matrix[max_point2][stops[i]]
 
-        # if the current point is closer to route of v1 then we add it there as long as it is not full and vice versa
+        # if the current stop is closer to route of v1 then we add it there as long as it is not full and vice versa
         if dist1 < dist2:
             if weights[0] + demands[stops[i]] <= MAX_VEHICLE_WEIGHT:
                 weights[0] += demands[stops[i]]
@@ -385,7 +307,7 @@ def two_opt_two_paths(c: Chromosome):
                 weights[0] += demands[stops[i]]
                 route1.append(stops[i])
 
-    # insert endpoint for two opt
+    # insert endpoint for 2-opt routes function
     route1.append(0)
     route2.append(0)
 
@@ -393,11 +315,12 @@ def two_opt_two_paths(c: Chromosome):
     route1 = two_opt_route(route1)
     route2 = two_opt_route(route2)
 
+    # remove end and starting points from optimized routes
+    route1 = route1[1:-1]
+    route2 = route2[1:-1]
+
     # change original chromosome
-    route1.pop(0)
-    route1.pop(-1)
-    route2.pop(0)
-    route2.pop(-1)
+    # traverse the vehicles array of the chromosome and change the current stop and vehicle according to new routes
     for i in range(0, len(c.vehicles)):
         if c.vehicles[i] == vehicle_1 or c.vehicles[i] == vehicle_2:
             if len(route1) > len(route2):
@@ -406,6 +329,17 @@ def two_opt_two_paths(c: Chromosome):
             else:
                 c.stops[i] = route2.pop(0)
                 c.vehicles[i] = vehicle_2
+
+
+# returns the best chromosome in a population
+def get_best_chromosome(population):
+    max_fitness = - sys.maxsize
+    best_chrom = Chromosome([], [])
+    for c in population:
+        if c.fitness > max_fitness:
+            max_fitness = c.fitness
+            best_chrom = c
+    return best_chrom
 
 
 # shows the phenotype of a chromosome
@@ -423,17 +357,7 @@ def print_phenotype(c: Chromosome):
     print("The total costs of the paths are:", "{:.2f}".format(sum(path_costs)))
 
 
-# returns the best chromosome in a population
-def get_best_chromosome(population):
-    max_fitness = - sys.maxsize
-    best_chrom = Chromosome([], [])
-    for c in population:
-        if c.fitness > max_fitness:
-            max_fitness = c.fitness
-            best_chrom = c
-    return best_chrom
-
-
+# implements the Genetic Algorithm
 def ga_solve():
     curr_population = gen_population()
     for chrom in curr_population:
@@ -461,6 +385,45 @@ def ga_solve():
         curr_population = new_population
 
     return get_best_chromosome(curr_population)
+
+
+# plot the routes of the vehicles of a chromosome as a map
+def plot_map(c: Chromosome, data):
+    x_data = [d[2] for d in data]
+    y_data = [d[3] for d in data]
+    colors = ["tab:blue", "tab:orange", "tab:green", "tab:red", "tab:purple", "tab:brown", "tab:pink", "tab:olive", "tab:grey"]
+
+    routes = []
+
+    for i in range(0, NO_VEHICLES):
+        route = [0]
+        for j in range(0, len(c.vehicles)):
+            if c.vehicles[j] == i:
+                route.append(c.stops[j])
+        route.append(0)
+        routes.append(route)
+
+    for i in range(0, len(routes)):
+        x_points = []
+        y_points = []
+        for j in routes[i]:
+            x_points.append(x_data[j])
+            y_points.append(y_data[j])
+        plt.plot(x_points[1:-1], y_points[1:-1], label="Route" + str(i + 1), marker='o', color=colors[i])
+        plt.plot(x_points[:2], y_points[:2], color=colors[i], linestyle="--")
+        plt.plot(x_points[-2:], y_points[-2:], color=colors[i], linestyle="--")
+
+    plt.plot(x_data[0], y_data[0], marker='o', color='black')
+
+    plt.legend()
+    plt.show()
+
+
+# print costs and weights of a single iteration of the best chromosome
+def print_cost_and_weight(c: Chromosome, iteration, runtime):
+    costs, weights = calculate_path_costs_and_weights(c)
+    print("Iteration: ", iteration, " runtime: ", "{:.4f}".format(runtime), ", costs: ", "{:.2f}".format(sum(costs)), ", weights: ", weights, sep="")
+    return sum(costs)
 
 
 # calculates the distance based on euclidean metric measurement
@@ -496,67 +459,6 @@ def calculate_map_context():
     return _dist_matrix, _demands, rows
 
 
-def plot_map(c: Chromosome, data):
-    x_data = [d[2] for d in data]
-    y_data = [d[3] for d in data]
-    colors = ["tab:blue", "tab:orange", "tab:green", "tab:red", "tab:purple", "tab:brown", "tab:pink", "tab:olive", "tab:grey"]
-
-    routes = []
-
-    for i in range(0, NO_VEHICLES):
-        route = [0]
-        for j in range(0, len(c.vehicles)):
-            if c.vehicles[j] == i:
-                route.append(c.stops[j])
-        route.append(0)
-        routes.append(route)
-
-    for i in range(0, len(routes)):
-        x_points = []
-        y_points = []
-        for j in routes[i]:
-            x_points.append(x_data[j])
-            y_points.append(y_data[j])
-        plt.plot(x_points[1:-1], y_points[1:-1], label="Route" + str(i + 1), marker='o', color=colors[i])
-        plt.plot(x_points[:2], y_points[:2], color=colors[i], linestyle="--")
-        plt.plot(x_points[-2:], y_points[-2:], color=colors[i], linestyle="--")
-
-    plt.plot(x_data[0], y_data[0], marker='o', color='black')
-
-    plt.legend()
-    plt.show()
-
-
-def check_costs_of_optimal_path():
-    print("")
-    print("distance of best solution")
-
-    Route1 = [0, 4, 7, 42, 31, 20, 46, 26, 0]
-    Route2 = [0, 36, 11, 15, 51, 2, 17, 14, 0]
-    Route3 = [0, 37, 3, 34, 33, 21, 0]
-    Route4 = [0, 1, 45, 6, 8, 0]
-    Route5 = [0, 25, 41, 29, 0]
-    Route6 = [0, 23, 52, 24, 44, 50, 48, 18, 0]
-    Route7 = [0, 32, 38, 16, 40, 53, 5, 10, 12, 0]
-    Route8 = [0, 30, 22, 19, 27, 13, 54, 28, 0]
-    Route9 = [0, 47, 39, 49, 9, 35, 43, 0]
-
-    paths = [Route1, Route2, Route3, Route4, Route5, Route6, Route7, Route8, Route9]
-    costs = []
-    for p in paths:
-        p_cost = 0
-        for i in range(1, len(p)):
-            p_cost += distance_matrix[p[i]][p[i - 1]]
-        costs.append(p_cost)
-    print(sum(costs))
-
-
-def print_cost_and_weight(c: Chromosome, iteration, runtime):
-    costs, weights = calculate_path_costs_and_weights(c)
-    print("Iteration: ", iteration, " runtime: ", runtime, ", costs: ", sum(costs), ", weights: ", weights, sep="")
-    return sum(costs)
-
-
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
 
@@ -582,15 +484,12 @@ if __name__ == '__main__':
             best_chrom_runtime = end_time - start_time
 
     print("\nBest result in detail\n")
-    print("Runtime of the algorithm for the best solution: ", "{:.2f}".format(best_chrom_runtime), "s", sep="")
     print("Total CPU Time: ", "{:.2f}".format(total_cpu_time), "s", sep="")
+    print("Total number of runs:", NO_EXPERIMENT_ITERATIONS)
+    print("Runtime of the algorithm for the best solution: ", "{:.2f}".format(best_chrom_runtime), "s", sep="")
     print("Absolute difference of optimal solution:", "{:.2f}".format(best_chrom_total_cost - optimal_solution_costs))
     print("Relative difference of optimal solution: ", "{:.2f}".format((100 / optimal_solution_costs * best_chrom_total_cost) - 100), "%", sep="")
     print("Weights and routes of best solution:\n")
 
     print_phenotype(best_chromosome)
     plot_map(best_chromosome, data_matrix)
-
-    # plot_optimal_path(data_matrix)
-
-    # check_costs_of_optimal_path()
