@@ -9,19 +9,18 @@ import matplotlib.pyplot as plt
 
 from typing import List
 
-NO_GENERATIONS = 800
-POPULATION_SIZE = 70
+NO_GENERATIONS = 400
+POPULATION_SIZE = 40
 CROSSOVER_RATE = 0.9
 MUTATION_RATE = 0.45
-NO_OF_MUTATIONS = 1
-NO_OF_MUTATED_CHROMS = 5
+NO_OF_MUTATIONS = 7
 OVER_WEIGHT_PENALTY = 1000
 SELECTION_PRESSURE = 1.5
 KEEP_BEST = True
 
 NO_VEHICLES = 9
 MAX_VEHICLE_WEIGHT = 100
-NO_EXPERIMENT_ITERATIONS = 10
+NO_EXPERIMENT_ITERATIONS = 5
 
 
 @dataclass
@@ -182,20 +181,29 @@ def do_mutation(c: Chromosome):
 
     old_chrom = Chromosome(c.stops.copy(), c.vehicles.copy(), c.fitness)
 
-    for i in range(0, NO_OF_MUTATED_CHROMS):
-
-        for j in range(0, NO_OF_MUTATIONS):
-            if random.uniform(0, 1) < MUTATION_RATE:
-                rand = random.uniform(0, 1)
-                if rand < 0.5:
-                    swap_gene_stops(c)
-                else:
-                    exchange_gene_vehicles(c)
+    for j in range(0, NO_OF_MUTATIONS):
+        if random.uniform(0, 1) < MUTATION_RATE:
+            rand = random.uniform(0, 1)
+            if rand < 0.2:
+                swap_gene_stops(c)
+            elif rand < 0.4:
+                swap_gene_vehicles(c)
+            elif rand < 0.6:
+                exchange_gene_vehicles_feasible(c)
+            elif rand < 0.8:
+                two_opt_one_path(c)
+            else:
+                two_opt_two_paths(c)
 
         evaluate_fitness(c)
         if c.fitness < old_chrom.fitness:
             c.stops = old_chrom.stops.copy()
             c.vehicles = old_chrom.vehicles.copy()
+        else:
+            old_chrom.stops = c.stops.copy()
+            old_chrom.vehicles = c.vehicles.copy()
+            old_chrom.fitness = c.fitness
+
 
 
 def do_mutation_old(c: Chromosome):
@@ -203,10 +211,14 @@ def do_mutation_old(c: Chromosome):
     for j in range(0, NO_OF_MUTATIONS):
         if random.uniform(0, 1) < MUTATION_RATE:
             rand = random.uniform(0, 1)
-            if rand < 0.5:
+            if rand < 0.25:
                 swap_gene_stops(c)
-            else:
+            elif rand < 0.5:
                 swap_gene_vehicles(c)
+            elif rand < 0.75:
+                exchange_gene_vehicles_feasible(c)
+            else:
+                two_opt_one_path(c)
 
 
 # swaps two genes in the stops array
@@ -220,7 +232,7 @@ def swap_gene_stops(c: Chromosome):
 
 
 # swaps two genes in the vehicles array
-# TODO swap to vehicle stops which are close to each other
+# TODO add maybe a feasability check
 def swap_gene_vehicles(c: Chromosome):
     swapping_index_1 = random.randint(0, len(c.stops) - 1)
     swapping_index_2 = random.randint(0, len(c.stops) - 1)
@@ -257,41 +269,143 @@ def invert_genes(c: Chromosome):
         c.vehicles[inverting_index_1:inverting_index_2] = c.vehicles[inverting_index_1:inverting_index_2][::-1]
 
 
-# exchanges the allele of one gene in the vehicles with a random other one
-# TODO maybe add check to swap them only if it makes sense
-def exchange_gene_vehicles(c: Chromosome):
-    changing_index_1 = random.randint(0, len(c.stops) - 1)
-    c.vehicles[changing_index_1] = random.randint(0, 8)
+# exchanges the allele of one gene in the vehicles with a random other one if it is feasible
+def exchange_gene_vehicles_feasible(c: Chromosome):
+    changing_index = random.randint(0, len(c.stops) - 1)
+    vehicle_weights = calculate_weights(c)
+    demand_at_changing_index = demands[changing_index]
+    available_vehicles = []
+
+    for i in range(0, len(vehicle_weights)):
+        if demand_at_changing_index + vehicle_weights[i] < MAX_VEHICLE_WEIGHT:
+            available_vehicles.append(i)
+
+    if len(available_vehicles) > 0:
+        c.vehicles[changing_index] = random.choice(available_vehicles)
+
+
+# exchanges the allele of one gene in the vehicles with a random other one if it is feasible
+def exchange_gene_vehicles_non_feasible(c: Chromosome):
+    changing_index = random.randint(0, len(c.stops) - 1)
+    c.vehicles[changing_index] = random.randint(0, 8)
 
 
 def cost_change(n1, n2, n3, n4):
     return distance_matrix[n1][n3] + distance_matrix[n2][n4] - distance_matrix[n1][n2] - distance_matrix[n3][n4]
 
 
-def two_opt_mutation(c: Chromosome):
+def two_opt_route(route):
+    path_size = len(route)
+    for i in range(1, path_size - 2):
+        for j in range(i + 1, path_size):
+            if j - i == 1:
+                continue
+            if cost_change(route[i - 1], route[i], route[j - 1], route[j]) < 0:
+                route[i:j] = route[j - 1:i - 1:-1]
+    return route
+
+
+# removes twists in the path of a vehicle
+def two_opt_one_path(c: Chromosome):
     vehicle_to_check = random.randint(0, 8)
     route = [0]
 
     for i in range(0, len(c.vehicles)):
-        if c.vehicles == vehicle_to_check:
+        if c.vehicles[i] == vehicle_to_check:
             route.append(c.stops[i])
     route.append(0)
 
-    path_size = len(route)
-    found_improvement = True
+    route = two_opt_route(route)
 
-    while found_improvement:
-        found_improvement = False
-        for i in range(1, path_size - 2):
-            for j in range(i+1, path_size):
-                if j - i == 1:
-                    continue
-                if cost_change(route[i - 1], route[i], route[j - 1], route[j]) < 0:
-                    route[i:j] = route[j - 1:i - 1:-1]
-                    found_improvement = True
+    route.pop(0)
+    for i in range(0, len(c.vehicles)):
+        if c.vehicles[i] == vehicle_to_check:
+            c.stops[i] = route.pop(0)
 
-    # TODO exchange route of chromosome
 
+# removes twists in the path of two vehicles
+def two_opt_two_paths(c: Chromosome):
+    vehicle_1 = random.randint(0, 8)
+    vehicle_2 = random.randint(0, 8)
+    if vehicle_1 == vehicle_2:
+        return
+
+    vehicle_weights = calculate_weights(c)
+    # return if overweight to keep only feasible solutions
+    if vehicle_weights[vehicle_1] + vehicle_weights[vehicle_2] >= 2 * MAX_VEHICLE_WEIGHT:
+        return
+
+    stops = []
+    for i in range(0, len(c.vehicles)):
+        if c.vehicles[i] == vehicle_1:
+            stops.append(c.stops[i])
+        if c.vehicles[i] == vehicle_2:
+            stops.append(c.stops[i])
+
+    # calculate the max dist of all nodes in the routes to select them as starting points
+    max_dist = 0
+    max_point1 = -1
+    max_point2 = -1
+    for i in range(0, len(stops) - 1):
+        for j in range(i+1, len(stops)):
+            dist = distance_matrix[stops[i]][stops[j]]
+            if dist > max_dist:
+                max_dist = dist
+                max_point1 = stops[i]
+                max_point2 = stops[j]
+
+    route1 = [0]
+    route2 = [0]
+    weights = [0, 0]
+    route1.append(max_point1)
+    route2.append(max_point2)
+    weights[0] += demands[max_point1]
+    weights[1] += demands[max_point2]
+    stops.remove(max_point1)
+    stops.remove(max_point2)
+
+    # add the current point to the closes route if possible
+    for i in range(0, len(stops)):
+        dist1 = distance_matrix[max_point1][stops[i]]
+        dist2 = distance_matrix[max_point2][stops[i]]
+
+        # if the current point is closer to route of v1 then we add it there as long as it is not full and vice versa
+        if dist1 < dist2:
+            if weights[0] + demands[stops[i]] <= MAX_VEHICLE_WEIGHT:
+                weights[0] += demands[stops[i]]
+                route1.append(stops[i])
+            else:
+                weights[1] += demands[stops[i]]
+                route2.append(stops[i])
+        else:
+            if weights[1] + demands[stops[i]] <= MAX_VEHICLE_WEIGHT:
+                weights[1] += demands[stops[i]]
+                route2.append(stops[i])
+            else:
+                weights[0] += demands[stops[i]]
+                route1.append(stops[i])
+
+    # insert endpoint for two opt
+    route1.append(0)
+    route2.append(0)
+
+    # free the route from twists
+    route1 = two_opt_route(route1)
+    route2 = two_opt_route(route2)
+
+    # change original chromosome
+    route1.pop(0)
+    route1.pop(-1)
+    route2.pop(0)
+    route2.pop(-1)
+    for i in range(0, len(c.vehicles)):
+        if c.vehicles[i] == vehicle_1 or c.vehicles[i] == vehicle_2:
+            if len(route1) > len(route2):
+                c.stops[i] = route1.pop(0)
+                c.vehicles[i] = vehicle_1
+            else:
+                c.stops[i] = route2.pop(0)
+                c.vehicles[i] = vehicle_2
 
 
 # shows the phenotype of a chromosome
@@ -336,7 +450,7 @@ def ga_solve():
             else:
                 child = parent1
 
-            do_mutation_old(child)
+            do_mutation(child)
             evaluate_fitness(child)
             new_population.append(child)
 
