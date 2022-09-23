@@ -9,17 +9,19 @@ import matplotlib.pyplot as plt
 
 from typing import List
 
-NO_GENERATIONS = 2000
-POPULATION_SIZE = 50
-CROSSOVER_RATE = 0.95
+NO_GENERATIONS = 800
+POPULATION_SIZE = 70
+CROSSOVER_RATE = 0.9
 MUTATION_RATE = 0.45
+NO_OF_MUTATIONS = 1
+NO_OF_MUTATED_CHROMS = 5
 OVER_WEIGHT_PENALTY = 1000
 SELECTION_PRESSURE = 1.5
 KEEP_BEST = True
 
 NO_VEHICLES = 9
 MAX_VEHICLE_WEIGHT = 100
-NO_EXPERIMENT_ITERATIONS = 20
+NO_EXPERIMENT_ITERATIONS = 10
 
 
 @dataclass
@@ -146,32 +148,6 @@ def select_parent_roulette_selection(chromosomes):
     return selected_chrom
 
 
-# TODO can most probably be deleted just kept in case we need it
-# do the crossover, implemented according to the order crossover
-def do_crossover_old(parent1: Chromosome, parent2: Chromosome):
-    crossover_point_1 = random.randint(0, len(parent1.stops) - 1)
-    crossover_point_2 = random.randint(0, len(parent1.stops) - 1)
-
-    child_stops = [-1] * len(parent1.stops)
-    child_vehicles = [-1] * len(parent1.vehicles)
-    used_values = []
-
-    for i in range(min(crossover_point_1, crossover_point_2), max(crossover_point_1, crossover_point_2) + 1):
-        child_stops[i] = parent1.stops[i]
-        used_values.append(parent1.stops[i])
-        child_vehicles[i] = parent1.vehicles[i]
-
-    available_values = [ele for ele in parent2.stops if ele not in used_values]
-
-    for i in range(0, len(parent1.stops)):
-        if child_stops[i] == -1:
-            index_of_no_in_parent2 = parent2.stops.index(available_values[0])
-            child_vehicles[i] = parent2.vehicles[index_of_no_in_parent2]
-            child_stops[i] = available_values.pop(0)
-
-    return Chromosome(child_stops, child_vehicles)
-
-
 # do the crossover, implemented according to the order crossover
 def do_crossover(parent1: Chromosome, parent2: Chromosome):
     crossover_point_1 = random.randint(0, len(parent1.stops) - 1)
@@ -203,38 +179,64 @@ def do_crossover(parent1: Chromosome, parent2: Chromosome):
 
 # does the mutation by swapping to random elements
 def do_mutation(c: Chromosome):
-    if random.uniform(0, 1) < MUTATION_RATE:
-        rand = random.uniform(0, 1)
-        if rand < 0.333:
-            swap_gene(c)
-        elif rand < 0.666:
-            # shift_genes(c)
-            pass
-        else:
-            #invert_genes(c)
-            pass
+
+    old_chrom = Chromosome(c.stops.copy(), c.vehicles.copy(), c.fitness)
+
+    for i in range(0, NO_OF_MUTATED_CHROMS):
+
+        for j in range(0, NO_OF_MUTATIONS):
+            if random.uniform(0, 1) < MUTATION_RATE:
+                rand = random.uniform(0, 1)
+                if rand < 0.5:
+                    swap_gene_stops(c)
+                else:
+                    exchange_gene_vehicles(c)
+
+        evaluate_fitness(c)
+        if c.fitness < old_chrom.fitness:
+            c.stops = old_chrom.stops.copy()
+            c.vehicles = old_chrom.vehicles.copy()
 
 
-# swaps two genes
-def swap_gene(c: Chromosome):
+def do_mutation_old(c: Chromosome):
+
+    for j in range(0, NO_OF_MUTATIONS):
+        if random.uniform(0, 1) < MUTATION_RATE:
+            rand = random.uniform(0, 1)
+            if rand < 0.5:
+                swap_gene_stops(c)
+            else:
+                swap_gene_vehicles(c)
+
+
+# swaps two genes in the stops array
+def swap_gene_stops(c: Chromosome):
     swapping_index_1 = random.randint(0, len(c.stops) - 1)
     swapping_index_2 = random.randint(0, len(c.stops) - 1)
 
-    if random.uniform(0, 1) < 0.5:
-        temp_stop = c.stops[swapping_index_1]
-        c.stops[swapping_index_1] = c.stops[swapping_index_2]
-        c.stops[swapping_index_2] = temp_stop
-    else:
-        temp_vehicle = c.vehicles[swapping_index_1]
-        c.vehicles[swapping_index_1] = c.vehicles[swapping_index_2]
-        c.vehicles[swapping_index_2] = temp_vehicle
+    temp_stop = c.stops[swapping_index_1]
+    c.stops[swapping_index_1] = c.stops[swapping_index_2]
+    c.stops[swapping_index_2] = temp_stop
+
+
+# swaps two genes in the vehicles array
+# TODO swap to vehicle stops which are close to each other
+def swap_gene_vehicles(c: Chromosome):
+    swapping_index_1 = random.randint(0, len(c.stops) - 1)
+    swapping_index_2 = random.randint(0, len(c.stops) - 1)
+
+    temp_vehicle = c.vehicles[swapping_index_1]
+    c.vehicles[swapping_index_1] = c.vehicles[swapping_index_2]
+    c.vehicles[swapping_index_2] = temp_vehicle
 
 
 # shift the genes either for stops or for vehicles
+# provided terrible performance
 def shift_genes(c: Chromosome):
     shifting_index = random.randint(0, len(c.stops) - 1)
+    change_stops = True if random.uniform(0, 1) < 0.5 else False
 
-    if random.uniform(0, 1) < 0.5:
+    if change_stops:
         removed_stop = c.stops.pop(0)
         c.stops.insert(shifting_index, removed_stop)
     else:
@@ -243,14 +245,53 @@ def shift_genes(c: Chromosome):
 
 
 # reverts the genes between two points
+# provided not so good performance
 def invert_genes(c: Chromosome):
     inverting_index_1 = random.randint(0, len(c.stops) - 1)
     inverting_index_2 = random.randint(0, len(c.stops) - 1) + 1
+    change_stops = True if random.uniform(0, 1) < 0.5 else False
 
-    if random.uniform(0, 1) < 0.5:
+    if change_stops:
         c.stops[inverting_index_1:inverting_index_2] = c.stops[inverting_index_1:inverting_index_2][::-1]
     else:
         c.vehicles[inverting_index_1:inverting_index_2] = c.vehicles[inverting_index_1:inverting_index_2][::-1]
+
+
+# exchanges the allele of one gene in the vehicles with a random other one
+# TODO maybe add check to swap them only if it makes sense
+def exchange_gene_vehicles(c: Chromosome):
+    changing_index_1 = random.randint(0, len(c.stops) - 1)
+    c.vehicles[changing_index_1] = random.randint(0, 8)
+
+
+def cost_change(n1, n2, n3, n4):
+    return distance_matrix[n1][n3] + distance_matrix[n2][n4] - distance_matrix[n1][n2] - distance_matrix[n3][n4]
+
+
+def two_opt_mutation(c: Chromosome):
+    vehicle_to_check = random.randint(0, 8)
+    route = [0]
+
+    for i in range(0, len(c.vehicles)):
+        if c.vehicles == vehicle_to_check:
+            route.append(c.stops[i])
+    route.append(0)
+
+    path_size = len(route)
+    found_improvement = True
+
+    while found_improvement:
+        found_improvement = False
+        for i in range(1, path_size - 2):
+            for j in range(i+1, path_size):
+                if j - i == 1:
+                    continue
+                if cost_change(route[i - 1], route[i], route[j - 1], route[j]) < 0:
+                    route[i:j] = route[j - 1:i - 1:-1]
+                    found_improvement = True
+
+    # TODO exchange route of chromosome
+
 
 
 # shows the phenotype of a chromosome
@@ -295,7 +336,7 @@ def ga_solve():
             else:
                 child = parent1
 
-            do_mutation(child)
+            do_mutation_old(child)
             evaluate_fitness(child)
             new_population.append(child)
 
@@ -355,45 +396,6 @@ def plot_map(c: Chromosome, data):
                 route.append(c.stops[j])
         route.append(0)
         routes.append(route)
-
-    for i in range(0, len(routes)):
-        x_points = []
-        y_points = []
-        for j in routes[i]:
-            x_points.append(x_data[j])
-            y_points.append(y_data[j])
-        plt.plot(x_points[1:-1], y_points[1:-1], label="Route" + str(i + 1), marker='o', color=colors[i])
-        plt.plot(x_points[:2], y_points[:2], color=colors[i], linestyle="--")
-        plt.plot(x_points[-2:], y_points[-2:], color=colors[i], linestyle="--")
-
-    plt.plot(x_data[0], y_data[0], marker='o', color='black')
-
-    plt.legend()
-    plt.show()
-
-
-def plot_optimal_path(data):
-    x_data = [d[2] for d in data]
-    y_data = [d[3] for d in data]
-    colors = ["tab:blue", "tab:orange", "tab:green", "tab:red", "tab:purple", "tab:brown", "tab:pink", "tab:olive",
-              "tab:grey"]
-
-    routes = [[0, 51, 15, 40, 11, 53, 12, 0]]
-
-    """
-    Route1 = [0, 4, 7, 42, 31, 20, 46, 26, 0]
-    Route2 = [0, 36, 11, 15, 51, 2, 17, 14, 0]
-    Route3 = [0, 37, 3, 34, 33, 21, 0]
-    Route4 = [0, 1, 45, 6, 8, 0]
-    Route5 = [0, 25, 41, 29, 0]
-    Route6 = [0, 23, 52, 24, 44, 50, 48, 18, 0]
-    Route7 = [0, 32, 38, 16, 40, 53, 5, 10, 12, 0]
-    Route8 = [0, 30, 22, 19, 27, 13, 54, 28, 0]
-    Route9 = [0, 47, 39, 49, 9, 35, 43, 0]
-
-    routes = [Route1, Route2, Route3, Route4, Route5, Route6, Route7, Route8, Route9]
-
-    """
 
     for i in range(0, len(routes)):
         x_points = []
