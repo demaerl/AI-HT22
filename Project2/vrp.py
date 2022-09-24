@@ -12,8 +12,8 @@ from typing import List
 NO_GENERATIONS = 400
 POPULATION_SIZE = 35
 CROSSOVER_RATE = 0.9
-MUTATION_RATE = 0.45
-NO_OF_MUTATIONS = 7
+MUTATION_RATE = 0.35
+NO_OF_MUTATIONS = 6
 OVER_WEIGHT_PENALTY = 1000
 KEEP_BEST = True
 
@@ -29,6 +29,7 @@ class Chromosome:
     fitness: int = 0
 
 
+# generates a single chromosome
 def gen_chromosome():
     # generates a random sequence of customers
     # and a corresponding array which vehicle stops at this customer
@@ -41,6 +42,7 @@ def gen_chromosome():
     return Chromosome(_stops.copy(), _vehicles.copy())
 
 
+# generates the initial population
 def gen_population():
     _chromosomes = []
     for i in range(0, POPULATION_SIZE):
@@ -48,16 +50,7 @@ def gen_population():
     return _chromosomes
 
 
-# applying the fitness function using a penalty if the weight of a vehicle is more than 100
-def fun_fitness(costs, weight):
-    if weight > 100:
-        weight_penalty = (weight - 100) * OVER_WEIGHT_PENALTY
-    else:
-        weight_penalty = 0
-    fitness = costs + weight_penalty
-    return fitness
-
-
+# calculates the weights of the vehicles in one chromosome
 def calculate_weights(c: Chromosome):
     vehicle_weights = [0] * NO_VEHICLES
     for i in range(0, len(c.vehicles)):
@@ -89,6 +82,16 @@ def calculate_path_costs_and_weights(c: Chromosome):
     return path_costs, vehicle_weights
 
 
+# applying the fitness function using a penalty if the weight of a vehicle is more than 100
+def fun_fitness(costs, weight):
+    if weight > 100:
+        weight_penalty = (weight - 100) * OVER_WEIGHT_PENALTY
+    else:
+        weight_penalty = 0
+    fitness = costs + weight_penalty
+    return fitness
+
+
 # calculates the fitness of a chromosome, the higher the fitness the better is the chromosome
 def evaluate_fitness(c: Chromosome):
     path_costs, vehicle_weights = calculate_path_costs_and_weights(c)
@@ -102,7 +105,7 @@ def evaluate_fitness(c: Chromosome):
 
 
 # select the parent using the roulette wheel selection
-def select_parent_roulette_selection(chromosomes):
+def select_parent(chromosomes):
     total_fitness = 0
     chroms_fitness = []
     for chrom in chromosomes:
@@ -345,7 +348,8 @@ def get_best_chromosome(population):
 # shows the phenotype of a chromosome
 def print_phenotype(c: Chromosome):
     path_costs, vehicle_weights = calculate_path_costs_and_weights(c)
-    print("Vehicle weights: ", vehicle_weights)
+    print("The total costs of the paths are:", "{:.2f}".format(sum(path_costs)))
+    print("Vehicle weights:", vehicle_weights)
 
     for i in range(0, NO_VEHICLES):
         print("Route #", i + 1, ":", sep="", end=" ")
@@ -353,8 +357,6 @@ def print_phenotype(c: Chromosome):
             if c.vehicles[j] == i:
                 print(c.stops[j], end=" ")
         print("")
-
-    print("The total costs of the paths are:", "{:.2f}".format(sum(path_costs)))
 
 
 # implements the Genetic Algorithm
@@ -366,10 +368,10 @@ def ga_solve():
     for i in range(0, NO_GENERATIONS):
         new_population = []
         for j in range(0, POPULATION_SIZE):
-            parent1 = select_parent_roulette_selection(curr_population)
+            parent1 = select_parent(curr_population)
 
             if random.uniform(0, 1) < CROSSOVER_RATE:
-                parent2 = select_parent_roulette_selection(curr_population)
+                parent2 = select_parent(curr_population)
                 child = do_crossover(parent1, parent2)
             else:
                 child = parent1
@@ -420,8 +422,7 @@ def plot_map(c: Chromosome, data):
 
 
 # print costs and weights of a single iteration of the best chromosome
-def print_cost_and_weight(c: Chromosome, iteration, runtime):
-    costs, weights = calculate_path_costs_and_weights(c)
+def print_cost_and_weight(costs, weights, iteration, runtime):
     print("Iteration: ", iteration, " runtime: ", "{:.4f}".format(runtime), ", costs: ", "{:.2f}".format(sum(costs)), ", weights: ", weights, sep="")
     return sum(costs)
 
@@ -459,7 +460,6 @@ def calculate_map_context():
     return _dist_matrix, _demands, rows
 
 
-# Press the green button in the gutter to run the script.
 if __name__ == '__main__':
 
     distance_matrix, demands, data_matrix = calculate_map_context()
@@ -475,7 +475,9 @@ if __name__ == '__main__':
         chromosome = ga_solve()
         end_time = time.time()
 
-        costs_i = print_cost_and_weight(chromosome, i + 1, end_time - start_time)
+        costs_i, weights_i = calculate_path_costs_and_weights(chromosome)
+        print_cost_and_weight(costs_i, weights_i, i + 1, end_time - start_time)
+        print_phenotype(chromosome)
         total_cpu_time += end_time - start_time
 
         if chromosome.fitness > best_chromosome.fitness:
