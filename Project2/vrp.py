@@ -9,17 +9,17 @@ import matplotlib.pyplot as plt
 
 from typing import List
 
-NO_GENERATIONS = 400
-POPULATION_SIZE = 35
+NO_GENERATIONS = 450
+POPULATION_SIZE = 45
 CROSSOVER_RATE = 0.9
 MUTATION_RATE = 0.35
-NO_OF_MUTATIONS = 6
+NO_OF_MUTATIONS = 7
 OVER_WEIGHT_PENALTY = 1000
 KEEP_BEST = True
 
 NO_VEHICLES = 9
 MAX_VEHICLE_WEIGHT = 100
-NO_EXPERIMENT_ITERATIONS = 20
+NO_EXPERIMENT_ITERATIONS = 30
 
 
 @dataclass
@@ -482,7 +482,7 @@ if __name__ == '__main__':
 
         if chromosome.fitness > best_chromosome.fitness:
             best_chromosome = chromosome
-            best_chrom_total_cost = costs_i
+            best_chrom_total_cost = sum(costs_i)
             best_chrom_runtime = end_time - start_time
 
     print("\nBest result in detail\n")
